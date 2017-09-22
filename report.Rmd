@@ -1,0 +1,154 @@
+---
+title: "Neighborhood Score: Benchmarking - Report"
+author: "Jiangtao Xu"
+date: "9/21/2017"
+output: html_document
+---
+
+
+## Execution Environment:
+
+Java Version: 1.8.0_144
+OS version: macOS 10.12.6
+Processor Name: Intel Core i7
+Processor Speed: 2.8GHZ
+Total Number of Cores: 4
+Memory: 16GB
+
+## Design of Evaluated Programs:
+
+This evaluated programs will collect execution-time information for the sequential and concurrent programs. For sequential or concurrent programs with threads from 2 to 16, each program would run 10 times. Collecting 10 times running time and calculate the mean and variance of each variant. Finally analyze the tendency with threads and program stablility.
+
+
+## About Variance:
+
+There are 2 java programs: Subtask01.java is a sequential program, reading from 100 files and calculating the neighborhood score in steps;Subtask02.java is a parallel/concurrent program, as for Subtask02.java, I) firstly it divides 100 files into K parts(K is the number of Threads from 2 to 16), then counts the frequency of letter in each part and merge results to get the letter scores among to 100 files. II) According to the letters scores, recount each part parallelly to get K clusters' neighborhood scores. Finally, merge the K clusters' scores together.
+
+Since wordcount and lettercount cost lots of CPU resource, when running the sequential program, it would take a long time to finish the calculation(around 15 seconds on the testing machine). As for parallel/concurrent program, the calculation have been divided into different CPU cores. Less resource competition, less time to finish the job.
+
+When number of threads is less than 4 (which is the number of cores on testing laptop), more threads would cost less running time. When number of threads is equals to 4, ideally, it would be the best performance. However, it's hard to see obvious difference among 5 threads or 3 threads, perhaps the interference of other processes on this machine. When number of thread increases from 5 to 16, running time firstly slow down, then become stable, but still slow than when threads of 4, fast than threads of 1 or 2.
+
+Another interference: sometime, reading from 100 files and writing to CSV takes much more time than word count, the I/O time sometime occupies more than 50% of the total running time. So when considering the interference, I/O would be a big deal.  
+
+
+##Details:
+
+### Sequential Implementation
+
+
+```{bash echo=FALSE}
+for i in {1..10}
+do
+java -cp src Subtask01
+done > 1.out
+```
+
+The output of 10 runs are stored in 1.out. This reads the data into R and converts time from milliseconds to seconds.
+The frequency histogram of sequential program:
+
+```{r echo=FALSE}
+out <- readLines("1.out")
+timesms <- as.numeric(out)
+x <- timesms / 1000
+hist(x,freq=T,xlab="Sequential Running")
+lines(density(x))
+```
+
+### Concurrent Implementation
+Concurrent program with thread from 2 to 16 would run 10 times, we calculate the mean and variance of the running time to determine which program is fast or stable. 
+
+```{bash echo=FALSE}
+for j in {2..16}
+do
+for i in {1..10}
+do
+java -cp src Subtask02 j
+done > $j.out
+done 
+```
+
+```{r echo=FALSE}
+a <- (1:16)
+b <- (1:16)
+a[1] = mean(x)
+b[1] = var(x)
+for (i in 2:16){
+  a[i] = mean(as.numeric(readLines(paste(i, ".out", sep=""))) / 1000)
+  b[i] = var(as.numeric(readLines(paste(i, ".out", sep=""))) / 1000)
+}
+  
+```
+
+```{r echo=FALSE}
+for (i in 1: 16){
+  cat(i,a[i],b[i],"\n")
+}
+
+```
+
+Mean running time with the increasing number of threads:
+```{r echo=FALSE}
+plot(
+     sapply(
+       1:length(a),
+       function(i) a[i]),
+     type="o",
+     ylab="Mean of running time",
+     xlab="Number of Threads"
+   )
+```
+
+Variance of running time with the increasing number of threads:
+```{r echo=FALSE}
+plot(
+     sapply(
+       1:length(b),
+       function(i) b[i]),
+     type="o",
+     ylab="Variance of running time",
+     xlab="Number of Threads"
+   )
+```
+
+The most fast program and its number of threads:
+```{r echo=FALSE}
+minmean <- min(a)
+for (i in 1: 16){
+  if (minmean == a[i]){
+    cat("number of threads:",i, "is fast\n")
+    cat("We see how the time converges towards mean of the fast program:")
+    fastnum <- as.numeric(readLines(paste(i, ".out", sep=""))) /1000
+    plot(
+    sapply(
+      1:length(fastnum),
+      function(i) mean(fastnum[1:i])),
+    type="o",
+    ylab="Mean of first K",
+    xlab=paste(i, " Threads", sep="")
+  )
+  }
+}
+```
+
+
+
+The most stable program and its number of threads:
+```{r echo=FALSE}
+minvar <- min(b)
+for (i in 1: 16){
+  if (minvar == b[i]){
+    cat("number of threads:",i, "is stable\n")
+        cat("We see how the time converges towards mean of the stable program:")
+    stablenum <- as.numeric(readLines(paste(i, ".out", sep=""))) /1000
+    plot(
+    sapply(
+      1:length(stablenum),
+      function(i) mean(stablenum[1:i])),
+    type="o",
+    ylab="Mean of first K",
+    xlab=paste(i, " Threads", sep="")
+    )
+  }
+}
+```
+
